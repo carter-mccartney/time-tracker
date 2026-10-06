@@ -1,0 +1,9 @@
+node_modules/
+dist/
+# Local secrets (Supabase URL/key live here; set them as GitHub repo variables for deploys)
+.env.local
+.env.*.local
+# Your real time-log data never goes into the repo
+data/
+*.xlsx
+*.xlsm
