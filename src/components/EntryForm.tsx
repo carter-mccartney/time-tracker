@@ -8,12 +8,14 @@ interface Props {
   onSubmit(entry: Entry): void;
   onDelete?(): void;
   onCancel?(): void;
+  /** Shown when editing entries that still need details: saves, then opens the next one. */
+  onSaveAndNext?(entry: Entry): void;
   /** Shown under the Start field, e.g. "Picks up where your last entry ended". */
   startHint?: string;
 }
 
 /** Project/Type inputs use the shared <datalist>s rendered in App (suggestions, but new names allowed). */
-export function EntryForm({ initial, isNew, onSubmit, onDelete, onCancel, startHint }: Props) {
+export function EntryForm({ initial, isNew, onSubmit, onDelete, onCancel, onSaveAndNext, startHint }: Props) {
   const [date, setDate] = useState(initial.date);
   const [start, setStart] = useState(inputTime(initial.start));
   const [end, setEnd] = useState(inputTime(initial.end));
@@ -28,13 +30,13 @@ export function EntryForm({ initial, isNew, onSubmit, onDelete, onCancel, startH
     if (value.trim().toLowerCase() === 'lunch' && !type.trim()) setType('Lunch');
   }
 
-  function submit(e?: FormEvent) {
+  // Only the times matter right away; project, type and notes can be filled in later.
+  function submit(e?: FormEvent, next = false) {
     e?.preventDefault();
-    if (!project.trim()) return setError('Choose or type a project.');
     const s = start || clockTime();
     if (end && toSeconds(end) === toSeconds(s)) return setError('End time is the same as the start time.');
     setError('');
-    onSubmit({
+    (next && onSaveAndNext ? onSaveAndNext : onSubmit)({
       ...initial,
       date: date || isoDate(),
       start: s,
@@ -50,7 +52,7 @@ export function EntryForm({ initial, isNew, onSubmit, onDelete, onCancel, startH
   };
 
   const overnight = end && start && toSeconds(end) < toSeconds(start);
-  const label = !isNew ? 'Save changes' : end ? 'Log entry' : 'Start timer';
+  const label = !isNew ? 'Save' : end ? 'Log entry' : 'Start timer';
 
   return (
     <form className="entry-form" onSubmit={submit} onKeyDown={submitOnCtrlEnter}>
@@ -77,11 +79,11 @@ export function EntryForm({ initial, isNew, onSubmit, onDelete, onCancel, startH
         </label>
         <label className="f-project">
           <span>Project</span>
-          <input list="dl-projects" value={project} onChange={(e) => changeProject(e.target.value)} placeholder="Pick or type a new one" autoComplete="off" />
+          <input list="dl-projects" value={project} onChange={(e) => changeProject(e.target.value)} placeholder="Optional, add later" autoComplete="off" />
         </label>
         <label className="f-type">
           <span>Type</span>
-          <input list="dl-types" value={type} onChange={(e) => setType(e.target.value)} placeholder="Meeting, Task, Project…" autoComplete="off" />
+          <input list="dl-types" value={type} onChange={(e) => setType(e.target.value)} placeholder="Optional, add later" autoComplete="off" />
         </label>
         <label className="f-notes">
           <span>Notes</span>
@@ -91,6 +93,7 @@ export function EntryForm({ initial, isNew, onSubmit, onDelete, onCancel, startH
       {error && <p className="form-error" role="alert">{error}</p>}
       <div className="form-actions">
         <button type="submit" className="primary">{label}</button>
+        {onSaveAndNext && <button type="button" className="ghost" onClick={() => submit(undefined, true)}>Save &amp; next untitled</button>}
         {onCancel && <button type="button" className="ghost" onClick={onCancel}>Cancel</button>}
         {onDelete && (
           <button type="button" className="danger ghost push-right" onClick={onDelete}>Delete</button>

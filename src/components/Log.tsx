@@ -13,6 +13,7 @@ interface Props {
 }
 
 const PAGE_DAYS = 30;
+const NO_PROJECT = '__needs_details__';
 
 export function Log({ entries, settings, now, projects, types, onEdit }: Props) {
   const [q, setQ] = useState('');
@@ -26,7 +27,7 @@ export function Log({ entries, settings, now, projects, types, onEdit }: Props) 
     const needle = q.trim().toLowerCase();
     return entries.filter(
       (e) =>
-        (!project || e.project === project) &&
+        (!project || (project === NO_PROJECT ? !e.project : e.project === project)) &&
         (!type || e.type === type) &&
         (!from || e.date >= from) &&
         (!to || e.date <= to) &&
@@ -43,6 +44,7 @@ export function Log({ entries, settings, now, projects, types, onEdit }: Props) 
         <input type="search" placeholder="Search notes, projects, types…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
         <select value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
           <option value="">All projects</option>
+          <option value={NO_PROJECT}>Needs details (no project)</option>
           {projects.map((p) => <option key={p}>{p}</option>)}
         </select>
         <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Type">

@@ -48,6 +48,12 @@ export const localStore: Store = {
   },
 };
 
+/** Erases this browser's offline copy (used after it has been copied to the cloud). */
+export function clearLocalEntries() {
+  localStorage.removeItem(ENTRIES_KEY);
+  localStorage.removeItem(SETTINGS_KEY);
+}
+
 // ---------- Supabase (cloud, signed in) ----------
 
 interface Row {

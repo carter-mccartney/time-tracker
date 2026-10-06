@@ -1,7 +1,7 @@
 import { EntryForm } from './EntryForm';
 import { EntryList } from './EntryList';
 import {
-  clockTime, entryMinutes, fmtClock, fmtDay, fmtDuration, inputTime, isoDate, toSeconds,
+  entryMinutes, fmtClock, fmtDay, fmtDuration, inputTime, isoDate, toSeconds,
   weekStart, workedMinutes, workedMinutesByDay,
 } from '../lib/time';
 import type { Entry, Settings } from '../lib/types';
@@ -11,12 +11,15 @@ interface Props {
   settings: Settings;
   now: Date;
   running: Entry | undefined;
+  needDetails: Entry[];
   onAdd(entry: Entry): void;
+  /** One tap: end the running entry now (if any) and start a new, untitled one. */
+  onNext(): void;
   onStop(): void;
   onEdit(entry: Entry): void;
 }
 
-export function Today({ entries, settings, now, running, onAdd, onStop, onEdit }: Props) {
+export function Today({ entries, settings, now, running, needDetails, onAdd, onNext, onStop, onEdit }: Props) {
   const today = isoDate(now);
   const todays = entries.filter((e) => e.date === today);
   const worked = workedMinutes(todays, settings.lunchAllowanceMin, now);
@@ -57,29 +60,55 @@ export function Today({ entries, settings, now, running, onAdd, onStop, onEdit }
         </div>
       </section>
 
-      {running && (
-        <section className="card running-card">
-          <div className="running-info">
-            <span className="pulse" aria-hidden />
-            <div>
-              <div className="running-title">{running.project}{running.type && <span className="pill">{running.type}</span>}</div>
-              <div className="muted">
-                Since {fmtClock(running.start)}{running.date !== today && ` on ${fmtDay(running.date, false)}`}
-                {running.notes && ` · ${running.notes}`}
-              </div>
+      <section className={`card quick${running ? ' is-running' : ''}`} aria-label="Quick log">
+        <div className="running-info">
+          <span className={running ? 'pulse' : 'idle-dot'} aria-hidden />
+          <div>
+            <div className="running-title">
+              {running ? (running.project || <span className="untitled">Untitled</span>) : 'Not tracking'}
+              {running?.type && <span className="pill">{running.type}</span>}
+            </div>
+            <div className="muted small">
+              {running
+                ? <>Since {fmtClock(running.start)}{running.date !== today && ` on ${fmtDay(running.date, false)}`}{running.notes && ` · ${running.notes}`}</>
+                : lastEnded ? `Last entry ended at ${fmtClock(lastEnded.end!)}` : 'Tap Start when you begin.'}
             </div>
           </div>
-          <div className="running-actions">
-            <span className="running-elapsed">{fmtDuration(entryMinutes(running, now))}</span>
-            <button className="primary" onClick={onStop}>Stop at {fmtClock(clockTime(now))}</button>
-            <button className="ghost" onClick={() => onEdit(running)}>Edit</button>
-          </div>
-        </section>
+        </div>
+        <div className="running-actions">
+          {running && <span className="running-elapsed">{fmtDuration(entryMinutes(running, now))}</span>}
+          {running ? (
+            <>
+              <button className="primary" onClick={onNext} title="End this entry now and start a new one">Next</button>
+              <button className="ghost" onClick={onStop}>Stop</button>
+              <button className="ghost" onClick={() => onEdit(running)}>Details</button>
+            </>
+          ) : (
+            <button className="primary" onClick={onNext}>Start now</button>
+          )}
+        </div>
+        <p className="quick-help muted small">
+          {running
+            ? <><strong>Next</strong> ends this entry at {fmtClock(now)} and starts a new one. Add project and notes whenever you have a moment.</>
+            : <><strong>Start now</strong> begins an untitled entry at {fmtClock(now)}. You can name it later.</>}
+        </p>
+      </section>
+
+      {needDetails.length > 0 && (
+        <p className="notice needs" role="status">
+          {needDetails.length === 1 ? '1 entry needs' : `${needDetails.length} entries need`} a project.
+          <button className="ghost sm" onClick={() => onEdit(needDetails[0])}>Fill in details</button>
+        </p>
       )}
 
       <section className="card">
-        <h2>{running ? 'Switch to a new task' : 'New entry'}</h2>
-        {running && <p className="muted small">Starting a new timer stops the current one at the new start time.</p>}
+        <h2>Today · {fmtDay(today)}</h2>
+        <EntryList entries={todays} now={now} onEdit={onEdit} />
+      </section>
+
+      <details className="card add-entry">
+        <summary><h2>Add an entry with specific times</h2></summary>
+        <p className="muted small">For time you didn't track live. Only the times are needed; the rest can wait. Leaving End blank starts a timer{running ? ' and stops the current one' : ''}.</p>
         <EntryForm
           key={`${entries.length}-${running?.id ?? ''}-${lastEnded?.id ?? ''}`}
           initial={blank}
@@ -87,12 +116,7 @@ export function Today({ entries, settings, now, running, onAdd, onStop, onEdit }
           onSubmit={onAdd}
           startHint={lastEnded ? 'Picks up where your last entry ended' : ''}
         />
-      </section>
-
-      <section className="card">
-        <h2>Today · {fmtDay(today)}</h2>
-        <EntryList entries={todays} now={now} onEdit={onEdit} />
-      </section>
+      </details>
     </div>
   );
 }

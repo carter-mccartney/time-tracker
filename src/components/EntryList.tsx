@@ -20,7 +20,7 @@ export function EntryList({ entries, now, onEdit, showNotes = true }: Props) {
             </span>
             <span className="er-dur">{fmtDuration(entryMinutes(e, now))}</span>
             <span className="er-main">
-              <span className="er-project">{e.project}</span>
+              {e.project ? <span className="er-project">{e.project}</span> : <span className="untitled">Add details</span>}
               {e.type && <span className="pill">{e.type}</span>}
               {showNotes && e.notes && <span className="er-notes">{e.notes}</span>}
             </span>

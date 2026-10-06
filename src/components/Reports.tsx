@@ -39,7 +39,7 @@ export function Reports({ entries, settings, now }: Props) {
 
   const breakdown = (key: (e: Entry) => string) =>
     [...groupBy(inRange, key)]
-      .map(([name, list]) => ({ name: name || '(none)', count: list.length, min: list.reduce((a, e) => a + entryMinutes(e, now), 0) }))
+      .map(([name, list]) => ({ name: name || 'No project yet', count: list.length, min: list.reduce((a, e) => a + entryMinutes(e, now), 0) }))
       .sort((a, b) => b.min - a.min);
   const byProject = breakdown((e) => e.project);
   const byType = breakdown((e) => e.type);

@@ -28,10 +28,17 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Check Supabase settings are present
+        run: |
+          if [ -z "${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}" ]; then
+            echo "::warning::VITE_SUPABASE_URL is not set, so the site will save data only in each browser (no sign-in). Add it under Settings > Secrets and variables > Actions."
+          fi
       - run: npm run build
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          # Accepts either repo Variables or repo Secrets with these names.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_ENABLE_GITHUB_LOGIN: ${{ vars.VITE_ENABLE_GITHUB_LOGIN }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

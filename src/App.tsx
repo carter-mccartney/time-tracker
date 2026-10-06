@@ -5,19 +5,38 @@ import { Lists } from './components/Lists';
 import { Log } from './components/Log';
 import { Reports } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
+import { SetPasswordPage } from './components/PasswordForm';
+import { RequestAccount } from './components/RequestAccount';
 import { SignIn } from './components/SignIn';
 import { Today } from './components/Today';
-import { cloudStore, localStore, type Store } from './lib/store';
-import { supabase } from './lib/supabase';
+import { makeSampleEntries } from './lib/sample';
+import { clearLocalEntries, cloudStore, localStore, type Store } from './lib/store';
+import { initialAuthLinkType, setRememberDevice, supabase } from './lib/supabase';
 import { clockTime, compareEntries, isoDate, toSeconds } from './lib/time';
 import { DEFAULT_SETTINGS, type Entry, type Settings } from './lib/types';
 
 type Tab = 'today' | 'log' | 'reports' | 'lists' | 'settings';
 const TABS: [Tab, string][] = [['today', 'Today'], ['log', 'Log'], ['reports', 'Reports'], ['lists', 'Projects & Types'], ['settings', 'Settings']];
 
+const DEMO_KEY = 'tt.demo';
+
+function readDemoFlag() {
+  try { return localStorage.getItem(DEMO_KEY) === '1'; } catch { return false; }
+}
+
+function setDemoFlag(on: boolean) {
+  try {
+    if (on) localStorage.setItem(DEMO_KEY, '1');
+    else localStorage.removeItem(DEMO_KEY);
+  } catch { /* ignore */ }
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!supabase);
+  const [demo, setDemo] = useState(readDemoFlag);
+  // Set when an invite or reset-password link signed someone in: they choose a password first.
+  const [linkType, setLinkType] = useState(initialAuthLinkType);
 
   useEffect(() => {
     if (!supabase) return;
@@ -25,7 +44,11 @@ export default function App() {
       setSession(data.session);
       setAuthReady(true);
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s);
+      if (event === 'PASSWORD_RECOVERY') setLinkType('recovery');
+      if (event === 'SIGNED_IN') { setDemoFlag(false); setDemo(false); }
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
@@ -33,8 +56,21 @@ export default function App() {
   const store = useMemo(() => (supabase && userId ? cloudStore(supabase, userId) : localStore), [userId]);
 
   if (!authReady) return <div className="splash">Loading…</div>;
-  if (supabase && !session) return <SignIn client={supabase} />;
-  return <Tracker key={userId ?? 'local'} store={store} userEmail={session?.user.email} />;
+  if (supabase && session && (linkType === 'invite' || linkType === 'recovery')) {
+    return <SetPasswordPage client={supabase} invite={linkType === 'invite'} onDone={() => setLinkType(null)} />;
+  }
+  if (supabase && !session && !demo) {
+    return <SignIn client={supabase} onTryDemo={() => { setDemoFlag(true); setDemo(true); }} />;
+  }
+  return (
+    <Tracker
+      key={userId ?? 'local'}
+      store={store}
+      userEmail={session?.user.email}
+      demo={!!supabase && !session}
+      onLeaveDemo={() => { setDemoFlag(false); setDemo(false); }}
+    />
+  );
 }
 
 /** Re-renders every `ms` so running timers and "time left" stay current. */
@@ -66,13 +102,22 @@ function readTab(): Tab {
   }
 }
 
-function Tracker({ store, userEmail }: { store: Store; userEmail: string | undefined }) {
+interface TrackerProps {
+  store: Store;
+  userEmail: string | undefined;
+  /** Visitor trying the app without an account: browser-only data, with a banner saying so. */
+  demo: boolean;
+  onLeaveDemo(): void;
+}
+
+function Tracker({ store, userEmail, demo, onLeaveDemo }: TrackerProps) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tab, setTabState] = useState<Tab>(readTab);
   const [editing, setEditing] = useState<Entry | null>(null);
+  const [requesting, setRequesting] = useState(false);
 
   const setTab = (t: Tab) => {
     setTabState(t);
@@ -98,6 +143,8 @@ function Tracker({ store, userEmail }: { store: Store; userEmail: string | undef
   const now = useNow(running ? 1000 : 30_000);
   const projects = useMemo(() => uniqueSorted(entries.map((e) => e.project)), [entries]);
   const types = useMemo(() => uniqueSorted(entries.map((e) => e.type)), [entries]);
+  /** Finished entries saved without a project, oldest first: the "fill in later" queue. */
+  const needDetails = useMemo(() => entries.filter((e) => !e.project.trim() && e.end !== null), [entries]);
 
   /** Updates the screen right away, then saves; on failure, shows the error and reloads what's saved. */
   async function persist(changed: Entry[]) {
@@ -125,12 +172,18 @@ function Tracker({ store, userEmail }: { store: Store; userEmail: string | undef
     persist(changed);
   }
 
+  function quickNext() {
+    const t = clockTime();
+    if (running && running.date === isoDate() && running.start.slice(0, 5) === t) return; // tapped twice in the same minute
+    addEntry({ id: '', date: isoDate(), start: t, end: null, project: '', type: '', notes: '' });
+  }
+
   function stopRunning() {
     if (running) persist([{ ...running, end: clockTime() }]);
   }
 
   async function removeEntry(entry: Entry) {
-    if (!window.confirm(`Delete this entry?\n\n${entry.date} ${entry.start} · ${entry.project}`)) return;
+    if (!window.confirm(`Delete this entry?\n\n${entry.date} ${entry.start.slice(0, 5)} · ${entry.project || 'untitled'}`)) return;
     setEditing(null);
     setEntries((prev) => prev.filter((e) => e.id !== entry.id));
     try {
@@ -159,6 +212,16 @@ function Tracker({ store, userEmail }: { store: Store; userEmail: string | undef
     await persist(list);
   }
 
+  function loadSample() {
+    persist(makeSampleEntries());
+  }
+
+  function clearBrowserData() {
+    if (!window.confirm('Erase all entries saved in this browser?')) return;
+    clearLocalEntries();
+    reload();
+  }
+
   const staleTimer = running && running.date !== isoDate(now);
 
   return (
@@ -173,11 +236,24 @@ function Tracker({ store, userEmail }: { store: Store; userEmail: string | undef
           ))}
         </nav>
         {running && tab !== 'today' && (
-          <button className="topbar-timer" onClick={() => setTab('today')} title="Timer running">● {running.project}</button>
+          <button className="topbar-timer" onClick={() => setTab('today')} title="Timer running">● {running.project || 'Untitled'}</button>
         )}
       </header>
 
       <main className="content">
+        {demo && (
+          <div className="notice demo-banner" role="status">
+            <p className="no-margin">
+              <strong>Demo mode.</strong> Your entries are saved only in this browser and aren't tied to an account.
+              Anyone using this browser can see them, so don't enter anything private on a shared computer.
+            </p>
+            <div className="form-actions">
+              {entries.length === 0 && <button className="primary sm" onClick={loadSample}>Load sample data</button>}
+              <button className="ghost sm" onClick={() => setRequesting(true)}>Request an account</button>
+              <button className="ghost sm" onClick={onLeaveDemo}>Sign in</button>
+            </div>
+          </div>
+        )}
         {error && (
           <p className="notice error" role="alert">
             {error} <button className="ghost sm" onClick={() => setError('')}>Dismiss</button>
@@ -190,7 +266,7 @@ function Tracker({ store, userEmail }: { store: Store; userEmail: string | undef
         )}
         {loading ? <p className="empty">Loading your log…</p> : (
           <>
-            {tab === 'today' && <Today entries={entries} settings={settings} now={now} running={running} onAdd={addEntry} onStop={stopRunning} onEdit={setEditing} />}
+            {tab === 'today' && <Today entries={entries} settings={settings} now={now} running={running} needDetails={needDetails} onAdd={addEntry} onNext={quickNext} onStop={stopRunning} onEdit={setEditing} />}
             {tab === 'log' && <Log entries={entries} settings={settings} now={now} projects={projects} types={types} onEdit={setEditing} />}
             {tab === 'reports' && <Reports entries={entries} settings={settings} now={now} />}
             {tab === 'lists' && <Lists entries={entries} onRename={renameAll} />}
@@ -202,30 +278,40 @@ function Tracker({ store, userEmail }: { store: Store; userEmail: string | undef
                 settings={settings}
                 onSaveSettings={saveSettings}
                 onImport={importEntries}
-                onSignOut={supabase ? () => supabase!.auth.signOut() : undefined}
+                demo={demo}
+                onLoadSample={loadSample}
+                onClearBrowserData={clearBrowserData}
+                onSignOut={supabase ? () => { setRememberDevice(false); supabase!.auth.signOut(); } : undefined}
               />
             )}
           </>
         )}
       </main>
 
+      {requesting && supabase && <RequestAccount client={supabase} onClose={() => setRequesting(false)} />}
+
       <datalist id="dl-projects">{projects.map((p) => <option key={p} value={p} />)}</datalist>
       <datalist id="dl-types">{types.map((t) => <option key={t} value={t} />)}</datalist>
 
-      {editing && (
+      {editing && (() => {
+        const nextUntitled = !editing.project.trim() ? needDetails.find((e) => e.id !== editing.id) : undefined;
+        return (
         <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setEditing(null)}>
           <div className="modal card" role="dialog" aria-modal="true" aria-label="Edit entry">
             <h2>Edit entry</h2>
             <EntryForm
+              key={editing.id}
               initial={editing}
               isNew={false}
               onSubmit={(e) => { persist([e]); setEditing(null); }}
               onDelete={() => removeEntry(editing)}
               onCancel={() => setEditing(null)}
+              onSaveAndNext={nextUntitled && ((e) => { persist([e]); setEditing(nextUntitled); })}
             />
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

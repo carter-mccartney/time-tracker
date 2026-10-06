@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { PasswordForm } from './PasswordForm';
 import { download, entriesToCsv, entryKey, parseEntriesJson } from '../lib/files';
-import { localStore, type Store } from '../lib/store';
+import { clearLocalEntries, localStore, type Store } from '../lib/store';
+import { supabase } from '../lib/supabase';
 import { compareEntries, isoDate } from '../lib/time';
 import type { Entry, Settings } from '../lib/types';
 
@@ -12,9 +14,14 @@ interface Props {
   onSaveSettings(s: Settings): void;
   onImport(entries: Entry[]): Promise<void>;
   onSignOut?(): void;
+  demo: boolean;
+  onLoadSample(): void;
+  onClearBrowserData(): void;
 }
 
-export function SettingsView({ store, userEmail, entries, settings, onSaveSettings, onImport, onSignOut }: Props) {
+export function SettingsView({
+  store, userEmail, entries, settings, onSaveSettings, onImport, onSignOut, demo, onLoadSample, onClearBrowserData,
+}: Props) {
   const [hours, setHours] = useState(String(settings.dailyHours));
   const [lunch, setLunch] = useState(String(settings.lunchAllowanceMin));
   const [msg, setMsg] = useState('');
@@ -76,12 +83,36 @@ export function SettingsView({ store, userEmail, entries, settings, onSaveSettin
           <>
             <p>Saved to your Supabase database, signed in as <strong>{userEmail}</strong>. Available on any device you sign in from.</p>
             {localCount > 0 && (
-              <p>
-                This browser also has {localCount} entries saved from before you connected the cloud.{' '}
-                <button className="ghost sm" onClick={async () => importNew(await localStore.list(), 'this browser')}>Copy them to the cloud</button>
-              </p>
+              <div className="notice">
+                <p className="no-margin">This browser also has {localCount} entries saved without an account (from demo mode or from before sign-in was set up).</p>
+                <div className="form-actions">
+                  <button className="primary sm" onClick={async () => importNew(await localStore.list(), 'this browser')}>1. Copy them to the cloud</button>
+                  <button
+                    className="ghost sm"
+                    onClick={() => {
+                      if (!window.confirm(`Erase the ${localCount} entries saved in this browser? Copy them to the cloud first; entries already in the cloud are not affected.`)) return;
+                      clearLocalEntries();
+                      setLocalCount(0);
+                      setMsg("Cleared this browser's offline copy.");
+                    }}
+                  >
+                    2. Erase this browser's copy
+                  </button>
+                </div>
+              </div>
             )}
             <div className="form-actions"><button className="ghost" onClick={onSignOut}>Sign out</button></div>
+          </>
+        ) : demo ? (
+          <>
+            <p>
+              <strong>Demo mode.</strong> Entries are saved only in this browser and aren't tied to an account.
+              If you get an account later, you can copy them into it from this page after signing in.
+            </p>
+            <div className="form-actions">
+              <button className="ghost" onClick={onLoadSample}>Add sample data</button>
+              <button className="ghost danger" onClick={onClearBrowserData}>Erase demo data</button>
+            </div>
           </>
         ) : (
           <p>
@@ -90,6 +121,14 @@ export function SettingsView({ store, userEmail, entries, settings, onSaveSettin
           </p>
         )}
       </section>
+
+      {store.kind === 'cloud' && supabase && (
+        <section className="card">
+          <h2>Change password</h2>
+          <p className="muted small">If someone gave you a temporary password, set your own here.</p>
+          <PasswordForm client={supabase} submitLabel="Change password" />
+        </section>
+      )}
 
       <section className="card">
         <h2>Import & backup</h2>
