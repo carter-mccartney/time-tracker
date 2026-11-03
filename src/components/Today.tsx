@@ -12,14 +12,16 @@ interface Props {
   now: Date;
   running: Entry | undefined;
   needDetails: Entry[];
+  /** Viewing someone else's log with view-only access. */
+  readOnly?: boolean;
   onAdd(entry: Entry): void;
   /** One tap: end the running entry now (if any) and start a new, untitled one. */
   onNext(): void;
   onStop(): void;
-  onEdit(entry: Entry): void;
+  onEdit?(entry: Entry): void;
 }
 
-export function Today({ entries, settings, now, running, needDetails, onAdd, onNext, onStop, onEdit }: Props) {
+export function Today({ entries, settings, now, running, needDetails, readOnly, onAdd, onNext, onStop, onEdit }: Props) {
   const today = isoDate(now);
   const todays = entries.filter((e) => e.date === today);
   const worked = workedMinutes(todays, settings.lunchAllowanceMin, now);
@@ -77,27 +79,27 @@ export function Today({ entries, settings, now, running, needDetails, onAdd, onN
         </div>
         <div className="running-actions">
           {running && <span className="running-elapsed">{fmtDuration(entryMinutes(running, now))}</span>}
-          {running ? (
+          {readOnly ? null : running ? (
             <>
               <button className="primary" onClick={onNext} title="End this entry now and start a new one">Next</button>
               <button className="ghost" onClick={onStop}>Stop</button>
-              <button className="ghost" onClick={() => onEdit(running)}>Details</button>
+              <button className="ghost" onClick={() => onEdit?.(running)}>Details</button>
             </>
           ) : (
             <button className="primary" onClick={onNext}>Start now</button>
           )}
         </div>
-        <p className="quick-help muted small">
+        {!readOnly && <p className="quick-help muted small">
           {running
             ? <><strong>Next</strong> ends this entry at {fmtClock(now)} and starts a new one. Add project and notes whenever you have a moment.</>
             : <><strong>Start now</strong> begins an untitled entry at {fmtClock(now)}. You can name it later.</>}
-        </p>
+        </p>}
       </section>
 
-      {needDetails.length > 0 && (
+      {!readOnly && needDetails.length > 0 && (
         <p className="notice needs" role="status">
           {needDetails.length === 1 ? '1 entry needs' : `${needDetails.length} entries need`} a project.
-          <button className="ghost sm" onClick={() => onEdit(needDetails[0])}>Fill in details</button>
+          <button className="ghost sm" onClick={() => onEdit?.(needDetails[0])}>Fill in details</button>
         </p>
       )}
 
@@ -106,7 +108,7 @@ export function Today({ entries, settings, now, running, needDetails, onAdd, onN
         <EntryList entries={todays} now={now} onEdit={onEdit} />
       </section>
 
-      <details className="card add-entry">
+      {!readOnly && <details className="card add-entry">
         <summary><h2>Add an entry with specific times</h2></summary>
         <p className="muted small">For time you didn't track live. Only the times are needed; the rest can wait. Leaving End blank starts a timer{running ? ' and stops the current one' : ''}.</p>
         <EntryForm
@@ -116,7 +118,7 @@ export function Today({ entries, settings, now, running, needDetails, onAdd, onN
           onSubmit={onAdd}
           startHint={lastEnded ? 'Picks up where your last entry ended' : ''}
         />
-      </details>
+      </details>}
     </div>
   );
 }

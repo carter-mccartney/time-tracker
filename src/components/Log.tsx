@@ -9,7 +9,7 @@ interface Props {
   now: Date;
   projects: string[];
   types: string[];
-  onEdit(entry: Entry): void;
+  onEdit?(entry: Entry): void;
 }
 
 const PAGE_DAYS = 30;

@@ -7,10 +7,12 @@ import { Reports } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
 import { SetPasswordPage } from './components/PasswordForm';
 import { RequestAccount } from './components/RequestAccount';
+import { SharingSettings } from './components/SharingSettings';
 import { SignIn } from './components/SignIn';
 import { Today } from './components/Today';
 import { makeSampleEntries } from './lib/sample';
-import { clearLocalEntries, cloudStore, localStore, type Store } from './lib/store';
+import { listShares, shareLabel, type Share } from './lib/sharing';
+import { clearLocalEntries, cloudStore, localStore, sharedStore, type Store } from './lib/store';
 import { initialAuthLinkType, setRememberDevice, supabase } from './lib/supabase';
 import { clockTime, compareEntries, isoDate, toSeconds } from './lib/time';
 import { DEFAULT_SETTINGS, type Entry, type Settings } from './lib/types';
@@ -53,7 +55,32 @@ export default function App() {
   }, []);
 
   const userId = session?.user.id;
-  const store = useMemo(() => (supabase && userId ? cloudStore(supabase, userId) : localStore), [userId]);
+  const [shares, setShares] = useState<Share[]>([]);
+  // Whose log is open: null = your own, otherwise the id of someone who shared theirs with you.
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const viewing = shares.find((s) => s.direction === 'in' && s.otherId === viewingId);
+
+  const refreshShares = useCallback(async () => {
+    if (!supabase || !userId) return setShares([]);
+    try {
+      setShares(await listShares(supabase));
+    } catch {
+      setShares([]); // sharing tables not set up yet: the app still works without them
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    refreshShares();
+    setViewingId(null);
+  }, [refreshShares]);
+
+  const viewOwner = viewing?.otherId;
+  const viewPermission = viewing?.permission;
+  const store = useMemo(() => {
+    if (!supabase || !userId) return localStore;
+    if (viewOwner && viewPermission) return sharedStore(supabase, viewOwner, viewPermission);
+    return cloudStore(supabase, userId);
+  }, [userId, viewOwner, viewPermission]);
 
   if (!authReady) return <div className="splash">Loading…</div>;
   if (supabase && session && (linkType === 'invite' || linkType === 'recovery')) {
@@ -64,11 +91,16 @@ export default function App() {
   }
   return (
     <Tracker
-      key={userId ?? 'local'}
+      key={`${userId ?? 'local'}:${viewOwner ?? 'own'}:${viewPermission ?? ''}`}
       store={store}
+      userId={userId}
       userEmail={session?.user.email}
       demo={!!supabase && !session}
       onLeaveDemo={() => { setDemoFlag(false); setDemo(false); }}
+      viewing={viewing}
+      shares={shares}
+      onSwitchLog={setViewingId}
+      refreshShares={refreshShares}
     />
   );
 }
@@ -104,13 +136,22 @@ function readTab(): Tab {
 
 interface TrackerProps {
   store: Store;
+  userId: string | undefined;
   userEmail: string | undefined;
   /** Visitor trying the app without an account: browser-only data, with a banner saying so. */
   demo: boolean;
   onLeaveDemo(): void;
+  /** Set when looking at someone else's log that they shared with you. */
+  viewing: Share | undefined;
+  shares: Share[];
+  onSwitchLog(ownerId: string | null): void;
+  refreshShares(): Promise<void>;
 }
 
-function Tracker({ store, userEmail, demo, onLeaveDemo }: TrackerProps) {
+function Tracker({ store, userId, userEmail, demo, onLeaveDemo, viewing, shares, onSwitchLog, refreshShares }: TrackerProps) {
+  /** owner = your own log; edit/view = someone else's, with the access they gave you. */
+  const access = viewing ? viewing.permission : 'owner';
+  const readOnly = access === 'view';
   const [entries, setEntries] = useState<Entry[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -138,6 +179,13 @@ function Tracker({ store, userEmail, demo, onLeaveDemo }: TrackerProps) {
   }, [store]);
 
   useEffect(() => { reload(); }, [reload]);
+
+  // Someone else's log can change while you look at it: refresh it every minute.
+  useEffect(() => {
+    if (!viewing) return;
+    const id = setInterval(reload, 60_000);
+    return () => clearInterval(id);
+  }, [viewing, reload]);
 
   const running = useMemo(() => entries.filter((e) => e.end === null).at(-1), [entries]);
   const now = useNow(running ? 1000 : 30_000);
@@ -223,24 +271,46 @@ function Tracker({ store, userEmail, demo, onLeaveDemo }: TrackerProps) {
   }
 
   const staleTimer = running && running.date !== isoDate(now);
+  const tabs = viewing ? TABS.filter(([key]) => key !== 'settings') : TABS;
+  const shownTab: Tab = viewing && tab === 'settings' ? 'today' : tab;
+  const incoming = shares.filter((s) => s.direction === 'in');
+  const openEditor = readOnly ? undefined : setEditing;
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand"><img src="./icon.svg" alt="" width={26} height={26} /> Time Tracker</div>
         <nav className="tabs" aria-label="Sections">
-          {TABS.map(([key, label]) => (
-            <button key={key} className={tab === key ? 'on' : ''} aria-current={tab === key ? 'page' : undefined} onClick={() => setTab(key)}>
+          {tabs.map(([key, label]) => (
+            <button key={key} className={shownTab === key ? 'on' : ''} aria-current={shownTab === key ? 'page' : undefined} onClick={() => setTab(key)}>
               {label}
             </button>
           ))}
         </nav>
-        {running && tab !== 'today' && (
+        {incoming.length > 0 && (
+          <select className="log-switcher" value={viewing?.otherId ?? ''} onChange={(e) => onSwitchLog(e.target.value || null)} aria-label="Whose log to show">
+            <option value="">My log</option>
+            {incoming.map((s) => (
+              <option key={s.id} value={s.otherId}>{shareLabel(s)}'s log{s.permission === 'view' ? ' (view only)' : ''}</option>
+            ))}
+          </select>
+        )}
+        {running && shownTab !== 'today' && (
           <button className="topbar-timer" onClick={() => setTab('today')} title="Timer running">● {running.project || 'Untitled'}</button>
         )}
       </header>
 
       <main className="content">
+        {viewing && (
+          <div className="notice viewing-banner" role="status">
+            <span>
+              You're looking at <strong>{shareLabel(viewing)}</strong>'s log
+              {readOnly ? ' (view only)' : '. You can add and edit entries, but not delete them'}
+              {viewing.hideNotes ? '. Notes are hidden' : ''}. It refreshes every minute.
+            </span>
+            <button className="ghost sm" onClick={() => onSwitchLog(null)}>Back to my log</button>
+          </div>
+        )}
         {demo && (
           <div className="notice demo-banner" role="status">
             <p className="no-margin">
@@ -259,18 +329,18 @@ function Tracker({ store, userEmail, demo, onLeaveDemo }: TrackerProps) {
             {error} <button className="ghost sm" onClick={() => setError('')}>Dismiss</button>
           </p>
         )}
-        {staleTimer && (
+        {staleTimer && !readOnly && (
           <p className="notice" role="status">
             A timer has been running since {running.date}. <button className="ghost sm" onClick={() => setEditing(running)}>Fix it</button>
           </p>
         )}
         {loading ? <p className="empty">Loading your log…</p> : (
           <>
-            {tab === 'today' && <Today entries={entries} settings={settings} now={now} running={running} needDetails={needDetails} onAdd={addEntry} onNext={quickNext} onStop={stopRunning} onEdit={setEditing} />}
-            {tab === 'log' && <Log entries={entries} settings={settings} now={now} projects={projects} types={types} onEdit={setEditing} />}
-            {tab === 'reports' && <Reports entries={entries} settings={settings} now={now} />}
-            {tab === 'lists' && <Lists entries={entries} onRename={renameAll} />}
-            {tab === 'settings' && (
+            {shownTab === 'today' && <Today entries={entries} settings={settings} now={now} running={running} needDetails={needDetails} readOnly={readOnly} onAdd={addEntry} onNext={quickNext} onStop={stopRunning} onEdit={openEditor} />}
+            {shownTab === 'log' && <Log entries={entries} settings={settings} now={now} projects={projects} types={types} onEdit={openEditor} />}
+            {shownTab === 'reports' && <Reports entries={entries} settings={settings} now={now} />}
+            {shownTab === 'lists' && <Lists entries={entries} onRename={readOnly ? undefined : renameAll} />}
+            {shownTab === 'settings' && (
               <SettingsView
                 store={store}
                 userEmail={userEmail}
@@ -282,7 +352,17 @@ function Tracker({ store, userEmail, demo, onLeaveDemo }: TrackerProps) {
                 onLoadSample={loadSample}
                 onClearBrowserData={clearBrowserData}
                 onSignOut={supabase ? () => { setRememberDevice(false); supabase!.auth.signOut(); } : undefined}
-              />
+              >
+                {store.kind === 'cloud' && supabase && userId && (
+                  <SharingSettings
+                    client={supabase}
+                    userId={userId}
+                    shares={shares}
+                    onChanged={refreshShares}
+                    onOpenLog={(s) => { onSwitchLog(s.otherId); setTab('today'); }}
+                  />
+                )}
+              </SettingsView>
             )}
           </>
         )}
@@ -304,7 +384,7 @@ function Tracker({ store, userEmail, demo, onLeaveDemo }: TrackerProps) {
               initial={editing}
               isNew={false}
               onSubmit={(e) => { persist([e]); setEditing(null); }}
-              onDelete={() => removeEntry(editing)}
+              onDelete={access === 'owner' ? () => removeEntry(editing) : undefined}
               onCancel={() => setEditing(null)}
               onSaveAndNext={nextUntitled && ((e) => { persist([e]); setEditing(nextUntitled); })}
             />

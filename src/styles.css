@@ -145,6 +145,15 @@ input[type='checkbox'] { width: auto; }
 label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; text-align: left; cursor: pointer; }
 button.link { background: none; border: none; padding: 0; color: var(--accent); font-weight: 500; font-size: 13px; text-decoration: underline; }
 .signin-hint { margin: 0; }
+.log-switcher { width: auto; max-width: 240px; margin-left: auto; font-size: 13px; padding: 5px 8px; }
+.log-switcher + .topbar-timer { margin-left: 0; }
+.viewing-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--accent-soft); }
+.entry-row.static { cursor: default; }
+.entry-row.static:hover { background: transparent; }
+.entry-row.static.running:hover { background: var(--accent-soft); }
+.share-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.share-form input[type='email'] { flex: 1 1 220px; width: auto; }
+.share-form select { width: auto; }
 .demo-banner { display: flex; flex-direction: column; gap: 4px; }
 .demo-banner .form-actions { margin-top: 6px; }
 .narrow-modal { width: min(560px, 100%); }

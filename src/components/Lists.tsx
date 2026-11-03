@@ -4,7 +4,8 @@ import type { Entry } from '../lib/types';
 
 interface Props {
   entries: Entry[];
-  onRename(field: 'project' | 'type', from: string, to: string): void;
+  /** Omitted for view-only access. */
+  onRename?(field: 'project' | 'type', from: string, to: string): void;
 }
 
 /** The workbook's "Projects" sheet: every project/type used so far, with a way to merge typos. */
@@ -37,7 +38,7 @@ function NameList({ title, field, entries, onRename }: Props & { title: string; 
   function rename(name: string) {
     const to = window.prompt(`Rename "${name}" to (use an existing name to merge):`, name)?.trim();
     if (!to || to === name) return;
-    onRename(field, name, to);
+    onRename?.(field, name, to);
   }
 
   return (
@@ -53,7 +54,7 @@ function NameList({ title, field, entries, onRename }: Props & { title: string; 
               <td className="num">{r.count}</td>
               <td className="num nowrap">{fmtDuration(r.min)}</td>
               <td className="nowrap muted">{fmtDay(r.last, false)}</td>
-              <td><button className="ghost sm" onClick={() => rename(r.name)}>Rename</button></td>
+              <td>{onRename && <button className="ghost sm" onClick={() => rename(r.name)}>Rename</button>}</td>
             </tr>
           ))}
         </tbody>

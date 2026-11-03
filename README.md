@@ -74,6 +74,15 @@ Everyone's entries are private to their own account. Row-level security makes th
 
 **Email limits.** Supabase's built-in email sends at most **2 emails per hour**, and **only to members of your Supabase organization's team**. "Invite user" emails won't reach other people, which is why approval uses a temporary password. "Forgot password?" works for you if your login email matches your Supabase account email. If a password ever needs resetting otherwise, set a new temporary one under **Authentication → Users** (⋯ menu on the user).
 
+## Sharing your log with another account
+
+In **Settings → Share your log**, enter another account holder's email and choose an access level:
+
+- **Can view:** they see your Today dashboard (including what's running now), Log, Reports and Projects & Types, but can't change anything. Tick **Hide my notes** to share times and projects only. The database blanks notes before sending them, so they can't be recovered.
+- **Can add & edit:** they can also add entries and change existing ones. They can never delete entries or change your settings. Editors always see notes.
+
+They open your log from the **My log ▾** switcher at the top of their screen, and it refreshes every minute. Set **Your name** in Settings so they see it instead of your email. You can change access or **Remove** someone at any time, and they can **Leave** a log shared with them. The confirmation after sharing is the same whether or not the email has an account, so the form can't be used to find out who has one.
+
 ## Publish to GitHub Pages
 
 1. Create a repo, then push this folder to `main`.

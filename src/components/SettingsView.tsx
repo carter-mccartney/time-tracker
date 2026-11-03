@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { PasswordForm } from './PasswordForm';
 import { download, entriesToCsv, entryKey, parseEntriesJson } from '../lib/files';
 import { clearLocalEntries, localStore, type Store } from '../lib/store';
@@ -17,10 +17,12 @@ interface Props {
   demo: boolean;
   onLoadSample(): void;
   onClearBrowserData(): void;
+  /** Extra sections (sharing) shown after the account settings. */
+  children?: ReactNode;
 }
 
 export function SettingsView({
-  store, userEmail, entries, settings, onSaveSettings, onImport, onSignOut, demo, onLoadSample, onClearBrowserData,
+  store, userEmail, entries, settings, onSaveSettings, onImport, onSignOut, demo, onLoadSample, onClearBrowserData, children,
 }: Props) {
   const [hours, setHours] = useState(String(settings.dailyHours));
   const [lunch, setLunch] = useState(String(settings.lunchAllowanceMin));
@@ -129,6 +131,8 @@ export function SettingsView({
           <PasswordForm client={supabase} submitLabel="Change password" />
         </section>
       )}
+
+      {children}
 
       <section className="card">
         <h2>Import & backup</h2>

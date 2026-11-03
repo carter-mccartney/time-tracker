@@ -3,7 +3,8 @@ import { DEFAULT_SETTINGS, type Entry, type Settings } from './types';
 
 /** Where entries live. The app talks only to this interface, so local and cloud behave the same. */
 export interface Store {
-  kind: 'local' | 'cloud';
+  /** local = this browser; cloud = your own account; shared = someone else's log shared with you. */
+  kind: 'local' | 'cloud' | 'shared';
   list(): Promise<Entry[]>;
   /** Insert or update (matched by id). */
   saveMany(entries: Entry[]): Promise<void>;
@@ -80,6 +81,12 @@ const toRow = (e: Entry, userId: string) => ({
   notes: e.notes,
 });
 
+function settingsFrom(data: { daily_hours: unknown; lunch_allowance_min: unknown } | null, error: unknown): Settings {
+  if (error) throw error;
+  if (!data) return DEFAULT_SETTINGS;
+  return { dailyHours: Number(data.daily_hours), lunchAllowanceMin: Number(data.lunch_allowance_min) };
+}
+
 const fromRow = (r: Row): Entry => ({
   id: r.id,
   date: r.date,
@@ -99,6 +106,7 @@ export function cloudStore(db: SupabaseClient, userId: string): Store {
         const { data, error } = await db
           .from('entries')
           .select(COLUMNS)
+          .eq('user_id', userId) // only your own rows, even if others share theirs with you
           .order('date')
           .order('start_time')
           .order('id')
@@ -123,10 +131,9 @@ export function cloudStore(db: SupabaseClient, userId: string): Store {
       const { data, error } = await db
         .from('settings')
         .select('daily_hours,lunch_allowance_min')
+        .eq('user_id', userId)
         .maybeSingle();
-      if (error) throw error;
-      if (!data) return DEFAULT_SETTINGS;
-      return { dailyHours: Number(data.daily_hours), lunchAllowanceMin: Number(data.lunch_allowance_min) };
+      return settingsFrom(data, error);
     },
     async saveSettings(s) {
       const { error } = await db.from('settings').upsert({
@@ -136,5 +143,49 @@ export function cloudStore(db: SupabaseClient, userId: string): Store {
       });
       if (error) throw error;
     },
+  };
+}
+
+/**
+ * Someone else's log that they shared with you. Reads go through shared_entries() so the
+ * database can blank notes the owner chose to hide. Writes are allowed only with 'edit'
+ * permission (enforced by the database too); deleting and changing their settings never are.
+ */
+export function sharedStore(db: SupabaseClient, ownerId: string, permission: 'view' | 'edit'): Store {
+  const denied = () => Promise.reject(new Error("You can't make that change to a log shared with you."));
+  return {
+    kind: 'shared',
+    async list() {
+      const out: Entry[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await db
+          .rpc('shared_entries', { p_owner: ownerId })
+          .order('date')
+          .order('start_time')
+          .order('id')
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        out.push(...(data as Row[]).map(fromRow));
+        if (data.length < PAGE) return out;
+      }
+    },
+    async saveMany(changed) {
+      if (permission !== 'edit') return denied();
+      for (let i = 0; i < changed.length; i += 500) {
+        const rows = changed.slice(i, i + 500).map((e) => toRow(e, ownerId));
+        const { error } = await db.from('entries').upsert(rows);
+        if (error) throw error;
+      }
+    },
+    remove: denied,
+    async loadSettings() {
+      const { data, error } = await db
+        .from('settings')
+        .select('daily_hours,lunch_allowance_min')
+        .eq('user_id', ownerId)
+        .maybeSingle();
+      return settingsFrom(data, error);
+    },
+    saveSettings: denied,
   };
 }
