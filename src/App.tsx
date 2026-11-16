@@ -10,11 +10,14 @@ import { RequestAccount } from './components/RequestAccount';
 import { SharingSettings } from './components/SharingSettings';
 import { SignIn } from './components/SignIn';
 import { Today } from './components/Today';
+import { CalendarSettingsCard } from './components/CalendarSettingsCard';
+import { cloudSyncDeps, loadCalendarSettings } from './lib/calendarCloud';
+import { useCalendarSync } from './lib/useCalendarSync';
 import { makeSampleEntries } from './lib/sample';
 import { listShares, shareLabel, type Share } from './lib/sharing';
 import { clearLocalEntries, cloudStore, localStore, sharedStore, type Store } from './lib/store';
 import { initialAuthLinkType, setRememberDevice, supabase } from './lib/supabase';
-import { clockTime, compareEntries, isoDate, toSeconds } from './lib/time';
+import { atTime, clockTime, compareEntries, isoDate, toSeconds } from './lib/time';
 import { DEFAULT_SETTINGS, type Entry, type Settings } from './lib/types';
 
 type Tab = 'today' | 'log' | 'reports' | 'lists' | 'settings';
@@ -191,8 +194,11 @@ function Tracker({ store, userId, userEmail, demo, onLeaveDemo, viewing, shares,
   const now = useNow(running ? 1000 : 30_000);
   const projects = useMemo(() => uniqueSorted(entries.map((e) => e.project)), [entries]);
   const types = useMemo(() => uniqueSorted(entries.map((e) => e.type)), [entries]);
-  /** Finished entries saved without a project, oldest first: the "fill in later" queue. */
-  const needDetails = useMemo(() => entries.filter((e) => !e.project.trim() && e.end !== null), [entries]);
+  /** Entries saved without a project that have started, oldest first: the "fill in later" queue. */
+  const needDetails = useMemo(
+    () => entries.filter((e) => !e.project.trim() && e.end !== null && atTime(e.date, e.start) <= now),
+    [entries, now],
+  );
 
   /** Updates the screen right away, then saves; on failure, shows the error and reloads what's saved. */
   async function persist(changed: Entry[]) {
@@ -208,6 +214,18 @@ function Tracker({ store, userId, userEmail, demo, onLeaveDemo, viewing, shares,
       reload();
     }
   }
+
+  // Calendar sync: only for your own log, signed in.
+  const calendarEnabled = store.kind === 'cloud' && !!supabase && !!userId;
+  const calendarDeps = useMemo(
+    () => (calendarEnabled && supabase && userId ? cloudSyncDeps(supabase, userId) : null),
+    [calendarEnabled, userId],
+  );
+  const loadCalendar = useCallback(
+    () => (supabase && userId ? loadCalendarSettings(supabase, userId) : Promise.resolve(null)),
+    [userId],
+  );
+  const calendar = useCalendarSync({ enabled: calendarEnabled, deps: calendarDeps, loadSettings: loadCalendar, onCreate: persist });
 
   function addEntry(entry: Entry) {
     const created: Entry = { ...entry, id: crypto.randomUUID() };
@@ -336,7 +354,7 @@ function Tracker({ store, userId, userEmail, demo, onLeaveDemo, viewing, shares,
         )}
         {loading ? <p className="empty">Loading your log…</p> : (
           <>
-            {shownTab === 'today' && <Today entries={entries} settings={settings} now={now} running={running} needDetails={needDetails} readOnly={readOnly} onAdd={addEntry} onNext={quickNext} onStop={stopRunning} onEdit={openEditor} />}
+            {shownTab === 'today' && <Today entries={entries} settings={settings} now={now} running={running} needDetails={needDetails} readOnly={readOnly} calendar={calendar.settings ? calendar : undefined} onAdd={addEntry} onNext={quickNext} onStop={stopRunning} onEdit={openEditor} />}
             {shownTab === 'log' && <Log entries={entries} settings={settings} now={now} projects={projects} types={types} onEdit={openEditor} />}
             {shownTab === 'reports' && <Reports entries={entries} settings={settings} now={now} />}
             {shownTab === 'lists' && <Lists entries={entries} onRename={readOnly ? undefined : renameAll} />}
@@ -353,6 +371,9 @@ function Tracker({ store, userId, userEmail, demo, onLeaveDemo, viewing, shares,
                 onClearBrowserData={clearBrowserData}
                 onSignOut={supabase ? () => { setRememberDevice(false); supabase!.auth.signOut(); } : undefined}
               >
+                {calendarEnabled && supabase && userId && (
+                  <CalendarSettingsCard client={supabase} userId={userId} calendar={calendar} />
+                )}
                 {store.kind === 'cloud' && supabase && userId && (
                   <SharingSettings
                     client={supabase}

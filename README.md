@@ -2,7 +2,7 @@
 
 A personal time log for tracking work on projects, tasks and meetings. It replaces an Excel workbook (`Time Log` sheet) and keeps the same behavior:
 
-- **Today dashboard**: time worked, time left against a daily target (9h), probable end time, and hours this week.
+- **Today dashboard**: time worked, time left against a daily target (9h), probable end time, and hours this week. Two bars show time that has **already happened** and time **logged** (including entries added ahead of time, like a meeting later today).
 - **Lunch rule**: up to 30 minutes of lunch counts as work time, and anything longer is subtracted. You can change this in Settings.
 - **Quick entry**: the date fills in by itself, and the start time picks up where the last entry ended.
 - **Project and Type suggestions**: built from every name you've used before, and typing a new name adds it. Picking project "Lunch" sets the type to "Lunch".
@@ -73,6 +73,23 @@ The site is meant for you, but visitors can still try it out:
 Everyone's entries are private to their own account. Row-level security makes the database return only the signed-in person's rows. You, as the project owner, can see everything in the Supabase dashboard.
 
 **Email limits.** Supabase's built-in email sends at most **2 emails per hour**, and **only to members of your Supabase organization's team**. "Invite user" emails won't reach other people, which is why approval uses a temporary password. "Forgot password?" works for you if your login email matches your Supabase account email. If a password ever needs resetting otherwise, set a new temporary one under **Authentication → Users** (⋯ menu on the user).
+
+## Calendar sync (Teams / Outlook meetings)
+
+The app can add today's meetings to your log automatically. Teams meetings live in your Outlook calendar.
+
+**How it decides what to add:**
+- Only **today's** timed meetings are considered, with recurring series expanded for today. All-day, cancelled and "Free" events are skipped.
+- A meeting is added **once**, when the app syncs before it has ended. Syncs happen when the app opens, every 10 minutes while it's open, and when you come back to the tab.
+- Once created, an entry is yours. If the meeting is later moved or cancelled, the entry isn't changed or removed. If you delete the entry, it isn't re-added.
+- A meeting moved to a **new time today** counts as new, so a second entry appears. Keep whichever one is right.
+- Meetings that ended before the app synced are never added automatically. They're listed on the Today page with an **Add** button in case you want them.
+
+**One-time setup:**
+1. **Publish your calendar.** In Outlook on the web, go to **Settings → Calendar → Shared calendars → Publish a calendar**. Choose **Calendar** and **Can view titles and locations**, click **Publish**, and copy the **ICS** link. Anyone with this link can see your meeting titles, so keep it private. **Reset links** on the same page makes a new one. If "Publish a calendar" is missing, your organization has turned it off.
+2. **Run the SQL.** Run [`supabase/schema.sql`](supabase/schema.sql) again in the SQL Editor. It adds the `calendar_settings` and `calendar_imports` tables.
+3. **Deploy the proxy.** Go to **Supabase → Edge Functions → Deploy a new function → Via editor**. Name it `calendar-proxy`, paste in [`supabase/functions/calendar-proxy/index.ts`](supabase/functions/calendar-proxy/index.ts), and deploy, leaving **Verify JWT** on. Browsers can't download Outlook calendar links directly, so this function fetches *your saved link only*, and only from Outlook or Google calendar hosts.
+4. **Turn it on.** In the app, go to **Settings → Calendar sync**, paste the ICS link, and choose whether the meeting title goes into Notes (the default, so you pick the project later) or Project.
 
 ## Sharing your log with another account
 

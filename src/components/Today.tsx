@@ -1,4 +1,6 @@
+import { CalendarCard } from './CalendarCard';
 import { EntryForm } from './EntryForm';
+import type { CalendarSync } from '../lib/useCalendarSync';
 import { EntryList } from './EntryList';
 import {
   entryMinutes, fmtClock, fmtDay, fmtDuration, inputTime, isoDate, toSeconds,
@@ -14,6 +16,8 @@ interface Props {
   needDetails: Entry[];
   /** Viewing someone else's log with view-only access. */
   readOnly?: boolean;
+  /** Present when calendar sync is set up. */
+  calendar?: CalendarSync;
   onAdd(entry: Entry): void;
   /** One tap: end the running entry now (if any) and start a new, untitled one. */
   onNext(): void;
@@ -21,16 +25,18 @@ interface Props {
   onEdit?(entry: Entry): void;
 }
 
-export function Today({ entries, settings, now, running, needDetails, readOnly, onAdd, onNext, onStop, onEdit }: Props) {
+export function Today({ entries, settings, now, running, needDetails, readOnly, calendar, onAdd, onNext, onStop, onEdit }: Props) {
   const today = isoDate(now);
   const todays = entries.filter((e) => e.date === today);
-  const worked = workedMinutes(todays, settings.lunchAllowanceMin, now);
+  // "Worked" only counts time that has already happened; "logged" also includes entries added ahead of time.
+  const worked = workedMinutes(todays, settings.lunchAllowanceMin, now, true);
+  const logged = workedMinutes(todays, settings.lunchAllowanceMin, now);
   const target = settings.dailyHours * 60;
   const left = target - worked;
   const monday = weekStart(today);
-  const weekMin = [...workedMinutesByDay(entries.filter((e) => e.date >= monday && e.date <= today), settings.lunchAllowanceMin, now).values()]
+  const weekMin = [...workedMinutesByDay(entries.filter((e) => e.date >= monday && e.date <= today), settings.lunchAllowanceMin, now, true).values()]
     .reduce((a, b) => a + b, 0);
-  const pct = Math.min(100, Math.max(0, (worked / target) * 100));
+  const pctOf = (min: number) => Math.min(100, Math.max(0, (min / target) * 100));
 
   // Like the workbook: the next entry starts where the last one ended.
   const lastEnded = todays.filter((e) => e.end).sort((a, b) => toSeconds(b.end!) - toSeconds(a.end!))[0];
@@ -56,10 +62,11 @@ export function Today({ entries, settings, now, running, needDetails, readOnly, 
           <span className="stat-label">This week</span>
           <span className="stat-value">{fmtDuration(weekMin)}</span>
         </div>
-        <div className="progress" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
-          <div className="progress-fill" style={{ width: `${pct}%` }} />
-          <span className="progress-label">{Math.round(pct)}% of {settings.dailyHours}h</span>
-        </div>
+        <ProgressRow label="So far" hint="Time that has already happened" minutes={worked} pct={pctOf(worked)} target={settings.dailyHours} />
+        <ProgressRow label="Logged" hint="Includes entries logged ahead of time" minutes={logged} pct={pctOf(logged)} target={settings.dailyHours} upcoming />
+        {logged - worked >= 1 && (
+          <p className="progress-note muted small">{fmtDuration(logged - worked)} of today's logged time hasn't happened yet.</p>
+        )}
       </section>
 
       <section className={`card quick${running ? ' is-running' : ''}`} aria-label="Quick log">
@@ -96,6 +103,8 @@ export function Today({ entries, settings, now, running, needDetails, readOnly, 
         </p>}
       </section>
 
+      {calendar && !readOnly && <CalendarCard calendar={calendar} />}
+
       {!readOnly && needDetails.length > 0 && (
         <p className="notice needs" role="status">
           {needDetails.length === 1 ? '1 entry needs' : `${needDetails.length} entries need`} a project.
@@ -119,6 +128,21 @@ export function Today({ entries, settings, now, running, needDetails, readOnly, 
           startHint={lastEnded ? 'Picks up where your last entry ended' : ''}
         />
       </details>}
+    </div>
+  );
+}
+
+function ProgressRow({ label, hint, minutes, pct, target, upcoming }: {
+  label: string; hint: string; minutes: number; pct: number; target: number; upcoming?: boolean;
+}) {
+  return (
+    <div className="progress-row" title={hint}>
+      <span className="progress-name">{label}</span>
+      <div className={`progress${upcoming ? ' upcoming' : ''}`} role="progressbar" aria-label={`${label}: ${hint}`}
+        aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+        <div className="progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="progress-value">{fmtDuration(minutes)} · {Math.round(pct)}% of {target}h</span>
     </div>
   );
 }

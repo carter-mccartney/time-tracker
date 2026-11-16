@@ -230,3 +230,41 @@ $$;
 
 revoke all on function public.share_log(text, text, boolean), public.list_shares(), public.shared_entries(uuid) from public, anon;
 grant execute on function public.share_log(text, text, boolean), public.list_shares(), public.shared_entries(uuid) to authenticated;
+
+-- ---------- Calendar sync (Teams / Outlook meetings → entries) ----------
+-- calendar_settings: your published calendar link (.ics). It's private to you; treat it like a password.
+-- calendar_imports:  which meeting occurrences were already turned into entries, so a meeting is
+--                    added once and never re-added (even if you delete or edit the entry).
+
+create table if not exists public.calendar_settings (
+  user_id       uuid primary key default auth.uid() references auth.users (id) on delete cascade,
+  ics_url       text not null check (ics_url ~* '^(https|webcal)://' and char_length(ics_url) <= 2000),
+  title_target  text not null default 'notes' check (title_target in ('notes', 'project')),
+  entry_type    text not null default 'Meeting' check (char_length(entry_type) <= 60),
+  updated_at    timestamptz not null default now()
+);
+
+create table if not exists public.calendar_imports (
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  event_key   text not null check (char_length(event_key) <= 1000),
+  created_at  timestamptz not null default now(),
+  primary key (user_id, event_key)
+);
+
+revoke all on public.calendar_settings, public.calendar_imports from anon;
+grant select, insert, update, delete on public.calendar_settings to authenticated;
+grant select, insert, delete on public.calendar_imports to authenticated;
+alter table public.calendar_settings enable row level security;
+alter table public.calendar_imports  enable row level security;
+
+drop policy if exists "own calendar settings" on public.calendar_settings;
+create policy "own calendar settings" on public.calendar_settings
+  for all to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
+
+drop policy if exists "own calendar imports" on public.calendar_imports;
+create policy "own calendar imports" on public.calendar_imports
+  for all to authenticated
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));

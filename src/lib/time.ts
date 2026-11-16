@@ -56,18 +56,28 @@ export function entryMinutes(e: Entry, now = new Date()) {
   return Math.max(0, (end.getTime() - start.getTime()) / 60_000);
 }
 
+/** Like entryMinutes, but only the part that has already happened (an entry logged ahead of time counts 0 until it starts). */
+export function elapsedMinutes(e: Entry, now = new Date()) {
+  const start = atTime(e.date, e.start);
+  let end = e.end ? atTime(e.date, e.end) : now;
+  if (e.end && end < start) end = new Date(end.getTime() + 86_400_000);
+  if (end > now) end = now;
+  return Math.max(0, (end.getTime() - start.getTime()) / 60_000);
+}
+
 export const isLunch = (e: Entry) =>
   e.project.trim().toLowerCase() === 'lunch' || e.type.trim().toLowerCase() === 'lunch';
 
 /**
  * Worked minutes for one day's entries, matching the workbook: lunch up to the
  * allowance counts as work, any lunch beyond it is subtracted.
+ * With `elapsedOnly`, time logged in advance (e.g. a meeting later today) isn't counted yet.
  */
-export function workedMinutes(dayEntries: Entry[], lunchAllowanceMin: number, now = new Date()) {
+export function workedMinutes(dayEntries: Entry[], lunchAllowanceMin: number, now = new Date(), elapsedOnly = false) {
   let total = 0;
   let lunch = 0;
   for (const e of dayEntries) {
-    const m = entryMinutes(e, now);
+    const m = elapsedOnly ? elapsedMinutes(e, now) : entryMinutes(e, now);
     total += m;
     if (isLunch(e)) lunch += m;
   }
@@ -75,10 +85,10 @@ export function workedMinutes(dayEntries: Entry[], lunchAllowanceMin: number, no
 }
 
 /** Sum of worked minutes across many days (lunch rule applied per day). */
-export function workedMinutesByDay(entries: Entry[], lunchAllowanceMin: number, now = new Date()) {
+export function workedMinutesByDay(entries: Entry[], lunchAllowanceMin: number, now = new Date(), elapsedOnly = false) {
   const byDay = groupBy(entries, (e) => e.date);
   const out = new Map<string, number>();
-  for (const [day, list] of byDay) out.set(day, workedMinutes(list, lunchAllowanceMin, now));
+  for (const [day, list] of byDay) out.set(day, workedMinutes(list, lunchAllowanceMin, now, elapsedOnly));
   return out;
 }
 
