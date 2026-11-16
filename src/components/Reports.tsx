@@ -34,8 +34,13 @@ export function Reports({ entries, settings, now }: Props) {
     [entries, from, to],
   );
   const byDay = workedMinutesByDay(inRange, settings.lunchAllowanceMin, now);
-  const total = [...byDay.values()].reduce((a, b) => a + b, 0);
   const daysWorked = byDay.size;
+  const rangeKpis = kpis(byDay, inRange.length, today);
+  const allTime = useMemo(
+    () => kpis(workedMinutesByDay(entries, settings.lunchAllowanceMin, now), entries.length, today),
+    [entries, settings.lunchAllowanceMin, now, today],
+  );
+  const firstDay = entries.reduce((a, e) => (!a || e.date < a ? e.date : a), '');
 
   const breakdown = (key: (e: Entry) => string) =>
     [...groupBy(inRange, key)]
@@ -74,12 +79,14 @@ export function Reports({ entries, settings, now }: Props) {
         <span className="print-only muted small"> · generated {fmtDay(today)} {fmtClock(clockTime(now))}</span>
       </h2>
 
-      <section className="stats">
-        <div className="stat"><span className="stat-label">Total worked</span><span className="stat-value">{fmtDuration(total)}</span></div>
-        <div className="stat"><span className="stat-label">Days worked</span><span className="stat-value">{daysWorked}</span></div>
-        <div className="stat"><span className="stat-label">Avg per day</span><span className="stat-value">{fmtDuration(daysWorked ? total / daysWorked : 0)}</span></div>
-        <div className="stat"><span className="stat-label">Entries</span><span className="stat-value">{inRange.length}</span></div>
-      </section>
+      <KpiTiles k={rangeKpis} label="Selected range KPIs" />
+
+      {entries.length > 0 && (
+        <section className="all-time">
+          <h2 className="report-title">All time <span className="muted small">· since {fmtDay(firstDay)}</span></h2>
+          <KpiTiles k={allTime} label="All-time KPIs" />
+        </section>
+      )}
 
       {inRange.length === 0 ? <p className="empty">No entries in this range.</p> : (
         <>
@@ -127,6 +134,40 @@ export function Reports({ entries, settings, now }: Props) {
         </>
       )}
     </div>
+  );
+}
+
+interface Kpis {
+  total: number;
+  days: number;
+  avg: number;
+  entries: number;
+  longest: [string, number] | null;
+  shortest: [string, number] | null;
+}
+
+/** Totals for a set of days. Today is left out of "shortest day" because it's still in progress. */
+function kpis(byDay: Map<string, number>, entryCount: number, today: string): Kpis {
+  const days = [...byDay];
+  const total = days.reduce((a, [, m]) => a + m, 0);
+  const longest = days.reduce<[string, number] | null>((best, d) => (!best || d[1] > best[1] ? d : best), null);
+  const shortest = days
+    .filter(([day]) => day !== today)
+    .reduce<[string, number] | null>((best, d) => (!best || d[1] < best[1] ? d : best), null);
+  return { total, days: days.length, avg: days.length ? total / days.length : 0, entries: entryCount, longest, shortest };
+}
+
+function KpiTiles({ k, label }: { k: Kpis; label: string }) {
+  const day = (d: [string, number] | null) => (d ? fmtDay(d[0]) : '—');
+  return (
+    <section className="stats six" aria-label={label}>
+      <div className="stat"><span className="stat-label">Total worked</span><span className="stat-value">{fmtDuration(k.total)}</span><span className="stat-sub">{fmtHours(k.total)} hours</span></div>
+      <div className="stat"><span className="stat-label">Days worked</span><span className="stat-value">{k.days}</span></div>
+      <div className="stat"><span className="stat-label">Avg per day</span><span className="stat-value">{fmtDuration(k.avg)}</span></div>
+      <div className="stat"><span className="stat-label">Entries</span><span className="stat-value">{k.entries}</span></div>
+      <div className="stat"><span className="stat-label">Longest day</span><span className="stat-value">{k.longest ? fmtDuration(k.longest[1]) : '—'}</span><span className="stat-sub">{day(k.longest)}</span></div>
+      <div className="stat"><span className="stat-label">Shortest day</span><span className="stat-value">{k.shortest ? fmtDuration(k.shortest[1]) : '—'}</span><span className="stat-sub">{k.shortest ? day(k.shortest) : 'No completed days yet'}</span></div>
+    </section>
   );
 }
 

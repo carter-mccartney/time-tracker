@@ -125,6 +125,9 @@ input[type='checkbox'] { width: auto; }
 }
 .stat-label { font-size: 13px; color: var(--muted); }
 .stat-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-sub { font-size: 12px; color: var(--muted); }
+.stats.six { grid-template-columns: repeat(3, 1fr); }
+.all-time { display: flex; flex-direction: column; gap: 12px; }
 .progress { grid-column: 1 / -1; position: relative; height: 22px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
 .progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.4s; }
 .progress-label { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; font-weight: 650; color: var(--text); text-shadow: 0 0 3px var(--surface); }
@@ -238,7 +241,7 @@ label.inline input { width: auto; }
 @media (max-width: 640px) {
   .topbar { padding: 8px 16px; gap: 8px; }
   .content { padding: 16px 16px 48px; }
-  .stats { grid-template-columns: 1fr 1fr; }
+  .stats, .stats.six { grid-template-columns: 1fr 1fr; }
   .stat-value { font-size: 20px; }
   .entry-row { grid-template-columns: 1fr auto; }
   .er-main { grid-column: 1 / -1; }
