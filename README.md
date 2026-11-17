@@ -8,6 +8,7 @@ A personal time log for tracking work on projects, tasks and meetings. It replac
 - **Project and Type suggestions**: built from every name you've used before, and typing a new name adds it. Picking project "Lunch" sets the type to "Lunch".
 - **Quick log**: tap **Start now** and **Next** to capture times as you go, such as in and out of meetings. Project, type and notes are optional, and entries without them are flagged so you can fill them in later (**Fill in details → Save & next untitled**).
 - **Timer**: start a task with the end time left blank. Starting the next task stops the current one.
+- **Resume after an interruption**: pulled away from a task, such as a training paused for someone's phone call? Tap **Next** and log the side work. When you return, tap **↻ Back to Training**: it ends the side task and starts a new Training entry right then, with the same project, type and notes. Nothing overlaps, so nothing is counted twice, and reports add the pieces together. Any finished entry on the Today list also has a **↻ Resume** button.
 - **Log**: every entry grouped by day, with search and filters. Click an entry to edit or delete it.
 - **Reports**: totals by project, type and day for this week, last week, a month, or custom dates. You can export CSV or print.
 - **Projects & Types**: see every name with its usage. Rename one to fix a typo or merge two names.

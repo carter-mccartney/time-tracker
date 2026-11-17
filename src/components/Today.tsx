@@ -21,11 +21,13 @@ interface Props {
   onAdd(entry: Entry): void;
   /** One tap: end the running entry now (if any) and start a new, untitled one. */
   onNext(): void;
+  /** Start a new timer now with this entry's project, type and notes. */
+  onResume(entry: Entry): void;
   onStop(): void;
   onEdit?(entry: Entry): void;
 }
 
-export function Today({ entries, settings, now, running, needDetails, readOnly, calendar, onAdd, onNext, onStop, onEdit }: Props) {
+export function Today({ entries, settings, now, running, needDetails, readOnly, calendar, onAdd, onNext, onResume, onStop, onEdit }: Props) {
   const today = isoDate(now);
   const todays = entries.filter((e) => e.date === today);
   // "Worked" only counts time that has already happened; "logged" also includes entries added ahead of time.
@@ -41,6 +43,12 @@ export function Today({ entries, settings, now, running, needDetails, readOnly, 
   // Like the workbook: the next entry starts where the last one ended.
   const lastEnded = todays.filter((e) => e.end).sort((a, b) => toSeconds(b.end!) - toSeconds(a.end!))[0];
   const defaultStart = running ? '' : lastEnded ? inputTime(lastEnded.end) : '';
+  // What "Back to …" resumes: while a timer runs, the latest earlier task today with different details
+  // (e.g. the training that was interrupted); otherwise the last task that ended.
+  const resumeTarget = running
+    ? [...todays].reverse().find((e) => e.id !== running.id && e.end && e.project.trim()
+        && toSeconds(e.start) <= toSeconds(running.start) && !sameDetails(e, running))
+    : lastEnded?.project.trim() ? lastEnded : undefined;
   const blank: Entry = { id: '', date: today, start: defaultStart, end: null, project: '', type: '', notes: '' };
 
   return (
@@ -89,16 +97,21 @@ export function Today({ entries, settings, now, running, needDetails, readOnly, 
           {readOnly ? null : running ? (
             <>
               <button className="primary" onClick={onNext} title="End this entry now and start a new one">Next</button>
+              {resumeTarget && <ResumeButton entry={resumeTarget} label="Back to" onResume={onResume} />}
               <button className="ghost" onClick={onStop}>Stop</button>
               <button className="ghost" onClick={() => onEdit?.(running)}>Details</button>
             </>
           ) : (
-            <button className="primary" onClick={onNext}>Start now</button>
+            <>
+              <button className="primary" onClick={onNext}>Start now</button>
+              {resumeTarget && <ResumeButton entry={resumeTarget} label="Resume" onResume={onResume} />}
+            </>
           )}
         </div>
         {!readOnly && <p className="quick-help muted small">
           {running
-            ? <><strong>Next</strong> ends this entry at {fmtClock(now)} and starts a new one. Add project and notes whenever you have a moment.</>
+            ? <><strong>Next</strong> ends this entry at {fmtClock(now)} and starts a new one. Add project and notes whenever you have a moment.
+                {resumeTarget && <> <strong>Back to</strong> ends it and picks <em>{resumeTarget.project}</em> up again with the same details.</>}</>
             : <><strong>Start now</strong> begins an untitled entry at {fmtClock(now)}. You can name it later.</>}
         </p>}
       </section>
@@ -114,7 +127,7 @@ export function Today({ entries, settings, now, running, needDetails, readOnly, 
 
       <section className="card">
         <h2>Today · {fmtDay(today)}</h2>
-        <EntryList entries={todays} now={now} onEdit={onEdit} />
+        <EntryList entries={todays} now={now} onEdit={onEdit} onResume={readOnly ? undefined : onResume} />
       </section>
 
       {!readOnly && <details className="card add-entry">
@@ -144,5 +157,17 @@ function ProgressRow({ label, hint, minutes, pct, target, upcoming }: {
       </div>
       <span className="progress-value">{fmtDuration(minutes)} · {Math.round(pct)}% of {target}h</span>
     </div>
+  );
+}
+
+const sameDetails = (a: Entry, b: Entry) =>
+  a.project.trim() === b.project.trim() && a.type.trim() === b.type.trim() && a.notes.trim() === b.notes.trim();
+
+function ResumeButton({ entry, label, onResume }: { entry: Entry; label: string; onResume(e: Entry): void }) {
+  return (
+    <button className="ghost resume" onClick={() => onResume(entry)}
+      title={`Start a new timer now for ${entry.project}${entry.type ? ` · ${entry.type}` : ''}, with the same notes`}>
+      ↻ {label} {entry.project}
+    </button>
   );
 }

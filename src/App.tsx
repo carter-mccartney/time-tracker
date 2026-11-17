@@ -244,6 +244,18 @@ function Tracker({ store, userId, userEmail, demo, onLeaveDemo, viewing, shares,
     addEntry({ id: '', date: isoDate(), start: t, end: null, project: '', type: '', notes: '' });
   }
 
+  /** Starts a new timer now with an earlier entry's project, type and notes (stopping the running one), e.g. back to a training after an interruption. */
+  function resumeEntry(template: Entry) {
+    const t = clockTime();
+    const details = { project: template.project, type: template.type, notes: template.notes };
+    // Started this same minute (e.g. tapped Next, then Resume): just give the running entry these details.
+    if (running && running.date === isoDate() && running.start.slice(0, 5) === t) {
+      persist([{ ...running, ...details }]);
+      return;
+    }
+    addEntry({ id: '', date: isoDate(), start: t, end: null, ...details });
+  }
+
   function stopRunning() {
     if (running) persist([{ ...running, end: clockTime() }]);
   }
@@ -354,7 +366,7 @@ function Tracker({ store, userId, userEmail, demo, onLeaveDemo, viewing, shares,
         )}
         {loading ? <p className="empty">Loading your log…</p> : (
           <>
-            {shownTab === 'today' && <Today entries={entries} settings={settings} now={now} running={running} needDetails={needDetails} readOnly={readOnly} calendar={calendar.settings ? calendar : undefined} onAdd={addEntry} onNext={quickNext} onStop={stopRunning} onEdit={openEditor} />}
+            {shownTab === 'today' && <Today entries={entries} settings={settings} now={now} running={running} needDetails={needDetails} readOnly={readOnly} calendar={calendar.settings ? calendar : undefined} onAdd={addEntry} onNext={quickNext} onResume={resumeEntry} onStop={stopRunning} onEdit={openEditor} />}
             {shownTab === 'log' && <Log entries={entries} settings={settings} now={now} projects={projects} types={types} onEdit={openEditor} />}
             {shownTab === 'reports' && <Reports entries={entries} settings={settings} now={now} />}
             {shownTab === 'lists' && <Lists entries={entries} onRename={readOnly ? undefined : renameAll} />}
